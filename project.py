@@ -86,6 +86,27 @@ class vector:
             raise ZeroDivisionError("cannot normalize a zero-length vector")
         return self / m
 
+    def __matmul__(self, other):
+        if not isinstance(other, vector):
+            return NotImplemented
+        self._check_len(other)
+        n = len(self.array)
+        if n == 2:
+            ax, ay = self.array
+            bx, by = other.array
+            return ax * by - ay * bx
+        if n == 3:
+            ax, ay, az = self.array
+            bx, by, bz = other.array
+            return vector([
+                ay * bz - az * by,
+                az * bx - ax * bz,
+                ax * by - ay * bx,
+            ])
+        raise ValueError(
+            f"cross product requires 2D or 3D vectors, got length {n}"
+        )
+
 
 
 def sign(a):
@@ -227,12 +248,6 @@ def on_screen(points: list[int]) -> bool:
 
 def min_line_on_screen(start_point, end_point):
     # computes the nearest point on start_end vector closest to start point
-    """
-    if isinstance(start_point, vector):
-        start_point = start_point.array
-
-    if isinstance(end_point, vector):
-        end_point = end_point.array"""
 
     vec_chang = sub_div_ * (end_point - start_point)
     point = start_point
@@ -248,7 +263,7 @@ def min_line_on_screen(start_point, end_point):
         return False
 
 
-def clip_line(dt_: list[float], t0_: list[float], plane_index: int) -> float:
+def calculate_t0(dt_: list[float], t0_: list[float], plane_index: int) -> float:
     dtx, dty, dtz = dt_
     t0x, t0y, t0z = t0_
 
@@ -289,26 +304,27 @@ def compute_end_points(vectors: list[list[int]]):
     v0, v1, v2 = vector(vectors[0]), vector(vectors[1]), vector(vectors[2])
     start_point = [v0, v0]
     end_point = [v1, v2]
-    delta_v = v1 - v0, v2 - v0
+    delta_v = v1 - v0, v2 - v0 # dw1, dw2
     sub_delta_v = [sub_div_ * delta_v[0], sub_div_ * delta_v[1]]
+    t0x, t0y, t0z = zip(start_point[0].array, start_point[1].array)
+    dtx, dty, dtz = zip(delta_v[0].array, delta_v[1].array)
 
-    for i in range(sub_div):
-        start_points.append(min_line_on_screen(start_point[0], end_point[0])) # u
-        end_points.append(min_line_on_screen(end_point[0], start_point[0]))
-        start_points.append(min_line_on_screen(start_point[1], end_point[1])) # v
-        end_points.append(min_line_on_screen(end_point[1], start_point[1]))
+    for t in range(sub_div + 1):
+        # t = u
+        # dtw = dw1
+        # t0w = w0 + dw2 * v0 // t0x, t0y, t0z = start_point
+        # index = 0
+        start_point_on_screen = on_screen(start_point)
+        end_point_on_screen = on_screen(end_point)
+        if start_point_on_screen and end_point_on_screen:
+            start_points.append(start_point)
+            end_points.append(end_point)
+        elif start_point_on_screen ^ end_point_on_screen:
+            if start_point_on_screen:
 
-        start_point[0] += sub_delta_v[0]
-        start_point[1] += sub_delta_v[1]
-        end_point[0] += sub_delta_v[1]
-        end_point[1] += sub_delta_v[0]
-        
-    start_points.append(min_line_on_screen(start_point[0], end_point[0])) # u
-    end_points.append(min_line_on_screen(end_point[0], start_point[0]))
-    start_points.append(min_line_on_screen(start_point[1], end_point[1])) # v
-    end_points.append(min_line_on_screen(end_point[1], start_point[1]))
 
-    return [start_points, end_points]
+
+                return [start_points, end_points]
 
 
 """v1 = vector([1, 2, 3])
