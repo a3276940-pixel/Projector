@@ -263,6 +263,55 @@ def min_line_on_screen(start_point, end_point):
         return False
 
 
+def closest_plane(line):
+    rest_planes = list(range(1, 6))
+
+    return rest_planes[0]
+
+def nearest_entry(a, b, z0=Z_minimum, z1=Z_maximum, srx=screen_rel[0], sry=screen_rel[1]):
+    """Closest point along a->b (t in [0,1]) that's inside the frustum,
+    or None if the segment never enters. a itself may be inside already.
+    Exactly one division. Call nearest_entry(b, a, ...) and use t_far = 1 - t
+    to get the far point instead, when you need it."""
+    # Claude vibecoded
+    ax, ay, az = a
+    bx, by, bz = b
+    dx, dy, dz = bx-ax, by-ay, bz-az
+    srx_az, srx_dz = srx*az, srx*dz
+    sry_az, sry_dz = sry*az, sry*dz
+
+    planes = (
+        (az-z0, dz), (z1-az, -dz),
+        (srx_az-ax, srx_dz-dx), (ax+srx_az, dx+srx_dz),
+        (sry_az-ay, sry_dz-dy), (ay+sry_az, dy+sry_dz),
+    )
+
+    best_L0 = best_L1 = None
+    check_list = []                        # satisfied-at-a, decreasing planes
+    for L0, L1 in planes:
+        if L0 < 0.0:
+            if L1 <= 0.0:
+                return None                # violated forever, never enters
+            if best_L0 is None or best_L0*L1 - L0*best_L1 > 0.0:
+                best_L0, best_L1 = L0, L1
+        elif L1 < 0.0:
+            check_list.append((L0, L1))
+
+    if best_L0 is None:
+        return a, 0.0                      # a already inside
+
+
+    t = -best_L0 / best_L1
+    if t > 1.0:
+        return None
+
+
+    for L0, L1 in check_list:              # confirm nothing else broke by then
+        if L0 + t*L1 < 0.0:
+            return None
+
+    return (ax+t*dx, ay+t*dy, az+t*dz), t
+
 def calculate_t0(dt_: list[float], t0_: list[float], plane_index: int) -> float:
     dtx, dty, dtz = dt_
     t0x, t0y, t0z = t0_
@@ -289,7 +338,29 @@ def calculate_t0(dt_: list[float], t0_: list[float], plane_index: int) -> float:
             return (Z_minimum - t0z) / dtz
 
 
-        
+def line_precomputation(start_point: list[int], end_point: list[int]) -> list[list[int]]:
+    """Splits line intersection viewing frustrum into 3 general cases
+    0, 1 or 2 intersection points and computes based on that only nedded intersection checks"""
+
+    start_point_on_screen = on_screen(start_point)
+    end_point_on_screen = on_screen(end_point)
+    if start_point_on_screen and end_point_on_screen:
+        start = start_point
+        end =end_point
+    elif start_point_on_screen ^ end_point_on_screen:
+        if start_point_on_screen:
+            start = start_point
+            end = nearest_entry(end_point, start_point)
+        else:
+            start = nearest_entry(start_point, end_point)
+            end = end_point
+    else:
+        start = nearest_entry(start_point, end_point)
+        end = nearest_entry(end_point, start_point)
+
+    return list[start, end]
+            
+     
 
 def compute_end_points(vectors: list[list[int]]):
     """
@@ -297,8 +368,8 @@ def compute_end_points(vectors: list[list[int]]):
 
     18 lines 0-9 u or v
     """
-    start_points = []
-    end_points = []
+    iterations_left = sub_div
+    lines = []
     start_point = vector([vectors[0], vectors[0]])
     end_point = vector([vectors[1], vectors[2]])
     v0, v1, v2 = vector(vectors[0]), vector(vectors[1]), vector(vectors[2])
@@ -306,36 +377,22 @@ def compute_end_points(vectors: list[list[int]]):
     end_point = [v1, v2]
     delta_v = v1 - v0, v2 - v0 # dw1, dw2
     sub_delta_v = [sub_div_ * delta_v[0], sub_div_ * delta_v[1]]
-    t0x, t0y, t0z = zip(start_point[0].array, start_point[1].array)
-    dtx, dty, dtz = zip(delta_v[0].array, delta_v[1].array)
 
-    for t in range(sub_div + 1):
-        # t = u
-        # dtw = dw1
-        # t0w = w0 + dw2 * v0 // t0x, t0y, t0z = start_point
-        # index = 0
-        start_point_on_screen = on_screen(start_point)
-        end_point_on_screen = on_screen(end_point)
-        if start_point_on_screen and end_point_on_screen:
-            start_points.append(start_point)
-            end_points.append(end_point)
-        elif start_point_on_screen ^ end_point_on_screen:
-            if start_point_on_screen:
+    while iterations_left >= 0:
+        lines.append(line_precomputation(start_point[0], end_point[0]))
+        lines.append(line_precomputation(start_point[1], end_point[1]))
 
+        start_point[0] += sub_delta_v[1]
+        start_point[1] += sub_delta_v[0]
+        end_point[0] += sub_delta_v[1]
+        end_point[1] += sub_delta_v[0]
 
+        iterations_left -= 1
 
-                return [start_points, end_points]
+    lines.append(line_precomputation(start_point[0], end_point[0]))
+    lines.append(line_precomputation(start_point[1], end_point[1]))
+    return lines
 
-
-"""v1 = vector([1, 2, 3])
-v2 = vector([2, 3, 4])
-n = 5
-print((v1 + v2).array)
-print((n * v1). array)
-print(v1[0], v2[2], v1[n])
-for i in range(10):
-    v1 += v2
-print(v1.array)"""
 
 vect1 = [-1, -1, 8]
 vect2 = [-1, 1, 8]
