@@ -6,12 +6,11 @@ from PIL import Image
 
 screen = 80, 64
 focal_length = 64
-screen_rel = screen[0] / focal_length, screen[1] / focal_length
+screen_rel = screen[0] / (2 * focal_length), screen[1] / (2 * focal_length)
 sub_div = 8
 sub_div_ = 1 / sub_div
 Z_maximum = 2 << 7
 Z_minimum = 0
-img = Image.new('RGB', screen, color='black')
 
 
 class vector:
@@ -106,7 +105,6 @@ class vector:
         raise ValueError(
             f"cross product requires 2D or 3D vectors, got length {n}"
         )
-
 
 
 def sign(a):
@@ -243,7 +241,8 @@ def on_screen(points: list[int]) -> bool:
     # checks if any point in 3d when projected is on screen
     return abs(points[0]) <= abs(points[2]) * screen_rel[0]\
        and abs(points[1]) <= abs(points[2]) * screen_rel[1]\
-       and points[2] >= 0
+       and points[2] >= Z_minimum\
+       and points[2] <= Z_maximum
 
 
 def min_line_on_screen(start_point, end_point):
@@ -260,13 +259,50 @@ def min_line_on_screen(start_point, end_point):
     if on_screen(point.array):
         return point.array
     else:
-        return False
+        return False 
 
 
-def closest_plane(line):
-    rest_planes = list(range(1, 6))
+def seperate_point_beetween_lines(line, point):
+    # line is set as a point the line is from 0 0 to the point the other point is symetrical
+    # returns if line is to the left in beetwen or right
+    cross0 = cross(line, point)
+    cross1 = cross((line[0], -line[1]), point)
+    if (cross0 > 0) ^ (cross1 > 0):
+        return 1 # inbeetwen
+    if cross0 < 0:
+        return 0
+    return 2
 
-    return rest_planes[0]
+
+def point_space_div(point):
+    position = 3 * seperate_point_beetween_lines((screen[0], screen[2]), (point[0], point[2])) +\
+                   seperate_point_beetween_lines((screen[1], screen[2]), (point[1], point[2]))
+
+    if Z_minimum < point[2] < Z_maximum and not on_screen(point):
+        if position == 1 or position == 3 or position == 5 or position == 7:
+            return 1, 2, position # position is encoded in 3rd number system
+                                  # and 1 3 5 and 7 are first type where we can know for sure the closest plane
+                                  # 2 is for the volume it is in
+        return 2, 2, position
+    if point[2] > Z_maximum:
+        if position == 1 or position == 3 or position == 5 or position == 7:
+            return 1, 3, position
+        return 2, 3, position
+
+
+def closest_plane(line: vector, cross_mul: vector, planes):
+    x0, y0, z0 = line[0]
+    x1, y1, z1 = line[1]
+    dx, dy, dz = line[1] - line[0]
+
+    for plane in planes:
+        if plane[0] < 0 ^ plane[1] >= 0: # never enters 
+            return None
+
+    if on_screen(line[0]) or on_screen(line[1]):
+        if on_screen(line[0]):
+            return
+    return
 
 def nearest_entry(a, b, z0=Z_minimum, z1=Z_maximum, srx=screen_rel[0], sry=screen_rel[1]):
     """Closest point along a->b (t in [0,1]) that's inside the frustum,
@@ -312,6 +348,7 @@ def nearest_entry(a, b, z0=Z_minimum, z1=Z_maximum, srx=screen_rel[0], sry=scree
 
     return (ax+t*dx, ay+t*dy, az+t*dz), t
 
+
 def calculate_t0(dt_: list[float], t0_: list[float], plane_index: int) -> float:
     dtx, dty, dtz = dt_
     t0x, t0y, t0z = t0_
@@ -346,7 +383,7 @@ def line_precomputation(start_point: list[int], end_point: list[int]) -> list[li
     end_point_on_screen = on_screen(end_point)
     if start_point_on_screen and end_point_on_screen:
         start = start_point
-        end =end_point
+        end = end_point
     elif start_point_on_screen ^ end_point_on_screen:
         if start_point_on_screen:
             start = start_point
@@ -359,8 +396,30 @@ def line_precomputation(start_point: list[int], end_point: list[int]) -> list[li
         end = nearest_entry(end_point, start_point)
 
     return list[start, end]
+
+
+def family_of_lines(delta_vec: vector, driv: vector, zero_point: vector, num_line: int) -> list[list[float]]:
+    start_point = [] * num_line
+    end_point = [] * num_line
+    corners = [zero_point, zero_point + delta_vec, zero_point + 8 * driv, zero_point + delta_vec + 8 * driv]
+    if all(on_screen(corner.array) for corner in corners):
+
+        start_point[0] = zero_point
+        end_point[0] = start_point[0] + delta_vec
+
+        for index in range(num_line):
+            start_point[index + 1] = start_point[index] + driv
+            end_point[index + 1] = start_point[index + 1] + delta_vec
+
+        return zip(start_point, end_point)
+    cross_multiplication = [[[] * (5 if Z_minimum == 0 else 6)] * num_line]
+    for _ in range(num_line + 1):
+        #calculate all cross multiplcation for first line
+        print()
+
+
+    return
             
-     
 
 def compute_end_points(vectors: list[list[int]]):
     """
@@ -394,14 +453,16 @@ def compute_end_points(vectors: list[list[int]]):
     return lines
 
 
-vect1 = [-1, -1, 8]
-vect2 = [-1, 1, 8]
-vect3 = [1, -1, 8]
-special_points = compute_end_points([vect1, vect2, vect3])
-for point in special_points[0]:
-    img.putpixel(project_vertex(point), (0, 0, 255))
+def main() -> None:
+    img = Image.new('RGB', screen, color='black')
+    vect1 = [-1, -1, 8]
+    vect2 = [-1, 1, 8]
+    vect3 = [1, -1, 8]
+    special_points = compute_end_points([vect1, vect2, vect3])
+    for point in special_points[0]:
+        img.putpixel(project_vertex(point), (0, 0, 255))
 
-for point in special_points[1]:
-    img.putpixel(project_vertex(point), (0, 255, 0))
+    for point in special_points[1]:
+        img.putpixel(project_vertex(point), (0, 255, 0))
 
-img.save('test.png')
+    img.save('test.png')
