@@ -124,42 +124,54 @@ def DoBelong(point: list[int], interval: list[int])  -> bool:
 
 
 def DoIntersect(line: list[list[int]]) -> bool:
-    vec1 = [screen[0] / 2 - line[0][0], screen[1] / 2 - line[0][1]]
-    vec2 = [-1 * screen[0] / 2 - line[0][0], screen[1] / 2 - line[0][1]]
-    vec3 = [-1 * screen[0] / 2 - line[0][0], -1 * screen[1] / 2 - line[0][1]]
-    vec4 = [screen[0] / 2 - line[0][0], -1 * screen[1] / 2 - line[0][1]]
+    vec = [None] * 4
+    for i in range(4):
+        corner = [(1 if (i - 1) // 2 != 0 else -1) * screen[0] >> 1, (1 if i // 2 == 0 else -1) * screen[1] >> 1]
+        vec[i] = corner - line[0]
 
-    border1 = min(line[0][0], line[1][0]) <= screen[0] / 2 <= max(line[0][0], line[1][0])
-    border2 = min(line[0][1], line[1][1]) <= screen[1] / 2 <= max(line[0][1], line[1][1])
-    border3 = min(line[0][0], line[1][0]) <= -1 * screen[0] / 2 <= max(line[0][0], line[1][0])
-    border4 = min(line[0][1], line[1][1]) <= -1 * screen[1] / 2 <= max(line[0][1], line[1][1])
 
-    vec_main = [line[1][0] - line[0][0], line[1][1] - line[0][1]]
+    def get_direction(A, B):
+        # Map each cell to its clockwise order index
+        order = {
+            (1, 2): 0,
+            (2, 1): 1,
+            (1, 0): 2,
+            (0, 1): 3
+        }
+    
+        diff = (order[B] - order[A]) % 4
+    
+        return 1 if diff == 1 else -1
+    
+
+    def point_type_position(point):
+        def point_interval_div(point, interval):
+            if interval[0] > point:
+                return 0
+            if interval[0] <= point <= interval[1]:
+                return 1
+            return 2
+
+        position = [point_interval_div(point[0], [-screen[0] > 1, screen[0] > 1]),\
+                    point_interval_div(point[1], [-screen[1] > 1, screen[1] > 1])]
+
+        # 0 1 | 1 0 | 2 1 | 1 2
+        point_type = (2 if position[1] - position[0] == 1 else 1)
+        return point_type, position
+
+    point0 = point_type_position(line[0])
+    point1 = point_type_position(line[1])
+    if any(point0[1][i] == point1[1][i] and point0[1][i] in (0, 2) for i in range(2)):
+        return False
+
+    if point0[0] == point1[0] == 2:
+        return True
+    if point0[0] == point1[0] == 1:
+        if point0[1][0] == point1[1][0] or point0[1][1] == point1[1][1]:
+            return True
 
     
-    if border1 or border2:
-        point1 = cross(vec1, vec_main)
-    if border2 or border3:
-        point2 = cross(vec2, vec_main)
-    if border3 or border4:
-        point3 = cross(vec3, vec_main)
-    if border4 or border1:
-        point4 = cross(vec4, vec_main)
-
-    # print(border1, border2, border3, border4)
-    # print(vec1, vec2, vec3, vec4, vec_main)
-    # print(point1, point2, point3, point4)
         
-    if border2 and (sign(point1) ^ sign(point2)):
-        return True
-    elif border3 and (sign(point2) ^ sign(point3)):
-        return True
-    elif border4 and sign(point3) ^ sign(point4):
-        return True
-    elif border1 and sign(point4) ^ sign(point1):
-        return True
-    else:
-        return False
 
 
 def PolygonOnScreen(points: list[list[int]]) -> bool:
@@ -173,7 +185,7 @@ def PolygonOnScreen(points: list[list[int]]) -> bool:
     or (maxx >= screen[0] / 2 and minx <= -1 * screen[0] / 2\
     and maxy >= screen[1] / 2 and miny <= -1 * screen[1] / 2):
         return True
-    for i in range(3):
+    for i in range(len(points)):
         if DoIntersect([points[i], points[i - 1]]):
             return True
     return False
@@ -269,28 +281,30 @@ def seperate_point_beetween_lines(line, point):
     cross1 = cross((line[0], -line[1]), point)
     if (cross0 > 0) ^ (cross1 > 0):
         return 1 # inbeetwen
-    if cross0 < 0:
+    if cross0 <= 0:
         return 0
     return 2
 
 
 def point_space_div(point):
+    # position is encoded in 3rd number system
+    # and 1 3 5 and 7 are first type where we can know for sure the closest plane
+    # 2 is for the volume it is in
     position = 3 * seperate_point_beetween_lines((screen[0], screen[2]), (point[0], point[2])) +\
                    seperate_point_beetween_lines((screen[1], screen[2]), (point[1], point[2]))
+    point_type = (1 if position == 1 or position == 3 or position == 5 or position == 7 else 0)
 
     if Z_minimum < point[2] < Z_maximum and not on_screen(point):
-        if position == 1 or position == 3 or position == 5 or position == 7:
-            return 1, 2, position # position is encoded in 3rd number system
-                                  # and 1 3 5 and 7 are first type where we can know for sure the closest plane
-                                  # 2 is for the volume it is in
-        return 2, 2, position
+        return point_type + 1, 2, position
     if point[2] > Z_maximum:
-        if position == 1 or position == 3 or position == 5 or position == 7:
-            return 1, 3, position
-        return 2, 3, position
+        return point_type + 1, 3, position
+    if 0 <= point[2] <= Z_minimum:
+        return point_type + 1, 1, position
+    if point[2] < 0:
+        return point_type + 1, 0, 8 - position
 
 
-def closest_plane(line: vector, cross_mul: vector, planes):
+def closest_plane(line: vector, cross_mul: vector, planes: list[int]):
     x0, y0, z0 = line[0]
     x1, y1, z1 = line[1]
     dx, dy, dz = line[1] - line[0]
@@ -303,6 +317,7 @@ def closest_plane(line: vector, cross_mul: vector, planes):
         if on_screen(line[0]):
             return
     return
+
 
 def nearest_entry(a, b, z0=Z_minimum, z1=Z_maximum, srx=screen_rel[0], sry=screen_rel[1]):
     """Closest point along a->b (t in [0,1]) that's inside the frustum,
@@ -419,7 +434,7 @@ def family_of_lines(delta_vec: vector, driv: vector, zero_point: vector, num_lin
 
 
     return
-            
+
 
 def compute_end_points(vectors: list[list[int]]):
     """
@@ -454,6 +469,7 @@ def compute_end_points(vectors: list[list[int]]):
 
 
 def main() -> None:
+    """
     img = Image.new('RGB', screen, color='black')
     vect1 = [-1, -1, 8]
     vect2 = [-1, 1, 8]
@@ -465,4 +481,5 @@ def main() -> None:
     for point in special_points[1]:
         img.putpixel(project_vertex(point), (0, 255, 0))
 
-    img.save('test.png')
+    img.save('test.png')"""
+
