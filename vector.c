@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <math.h>
 
 struct vector
 {
@@ -8,9 +9,12 @@ struct vector
 };
 
 
-void free_vector(struct vector v){
-    free(v.components);
+void free_vector(struct vector *v){
+    free(v->components);
+    v->components = NULL;
+    v->dimensions = 0;
 }
+
 
 void cmp_dim(struct vector a, struct vector b){
     if (a.dimensions != b.dimensions){
@@ -24,6 +28,7 @@ struct vector vector_add(struct vector a, struct vector b){
     struct vector c;
 
     c.dimensions = a.dimensions;
+    c.components = NULL;
     c.components = malloc(c.dimensions * sizeof(float));
 
 
@@ -40,6 +45,7 @@ struct vector vector_substract(struct vector a, struct vector b){
     struct vector c;
 
     c.dimensions = a.dimensions;
+    c.components = NULL;
     c.components = malloc(c.dimensions * sizeof(float));
 
 
@@ -78,7 +84,68 @@ struct vector vector_multiplication(struct vector a, struct vector b){
 }
 
 
+int vector_equality(struct vector a, struct vector b){
+    if (a.dimensions != b.dimensions){
+        return 0;
+    }
 
+    for (int i = 0; i < a.dimensions; i++){
+        if (a.components[i] != b.components[i]){
+            return 0;
+        }
+    }
+    return 1;
+}
+
+
+struct vector vector_negate(struct vector a){
+    struct vector c;
+
+    c.dimensions = a.dimensions;
+    c.components = NULL;
+    c.components = malloc(c.dimensions * sizeof(float));
+
+    for (int i = 0; i < a.dimensions; i++){
+        c.components[i] = -1 * a.components[i];
+    }
+    return c;
+
+}
+
+
+struct vector vector_div(struct vector a, float b){
+    struct vector c;
+
+    c.dimensions = a.dimensions;
+    c.components = NULL;
+
+    if (b == 0 || a.dimensions == 0){
+        return c; 
+    }
+
+    c.components = malloc(c.dimensions * sizeof(float));
+
+    for (int i = 0; i < a.dimensions; i++){
+        c.components[i] = a.components[i] / b;
+    }
+
+    return c;
+}
+
+
+float vector_magnitude(struct vector a){
+    float result = 0.0f;
+
+    for (int i = 0; i < a.dimensions; i++){
+        result += a.components[i] * a.components[i];
+    }
+    return sqrt(result);
+}
+
+
+struct vector vector_normalized(struct vector a){
+    return vector_div(a, vector_magnitude(a));
+}
 
 int main(){
     return 0;
