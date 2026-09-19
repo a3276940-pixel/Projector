@@ -2,11 +2,23 @@
 #include <stdlib.h>
 #include <math.h>
 
+
 struct vector
 {
     float *components;
     int dimensions;
 };
+
+
+struct vector vector_from_array(float *arr, int dimensions){
+    struct vector v;
+    v.dimensions = dimensions;
+    v.components = malloc(dimensions * sizeof(float));
+    for (int i = 0; i < dimensions; i++){
+        v.components[i] = arr[i];
+    }
+    return v;
+}
 
 
 void free_vector(struct vector *v){
@@ -40,7 +52,7 @@ struct vector vector_add(struct vector a, struct vector b){
 }
 
 
-struct vector vector_substract(struct vector a, struct vector b){
+struct vector vector_subtract(struct vector a, struct vector b){
     cmp_dim(a, b);
     struct vector c;
 
@@ -146,6 +158,17 @@ float vector_magnitude(struct vector a){
 struct vector vector_normalized(struct vector a){
     return vector_div(a, vector_magnitude(a));
 }
+
+
+float vector_scalar_mul(struct vector a, struct vector b){
+    float result;
+
+    for (int i = 0; i < a.dimensions; i++){
+        result += a.components[i] * b.components[i];
+    }
+    return result;
+}
+
 
 int main(){
     return 0;

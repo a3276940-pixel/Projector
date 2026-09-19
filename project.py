@@ -1,9 +1,12 @@
 from __future__ import annotations
 import math
 from PIL import Image
+import ctypes
+import os
 
-# test
+os.add_dll_directory(r"C:\msys64\ucrt64\bin")
 
+vector_library = ctypes.CDLL("C:\Users\ASUS\Desktop\Projects\Projector\vector.dll")
 screen = 80, 64
 focal_length = 64
 screen_rel = screen[0] / (2 * focal_length), screen[1] / (2 * focal_length)
@@ -13,99 +16,178 @@ Z_maximum = 2 << 7
 Z_minimum = 0
 
 
-class vector:
+def _configure_lib(lib):
+    lib.vector_from_array.argtypes = [ctypes.POINTER(ctypes.c_float), ctypes.c_int]
+    lib.vector_from_array.restype = vector
+
+    lib.vector_add.argtypes = [vector, vector]
+    lib.vector_add.restype = vector
+
+    lib.vector_subtract.argtypes = [vector, vector]
+    lib.vector_subtract.restype = vector
+
+    lib.vector_negate.argtypes = [vector]
+    lib.vector_negate.restype = vector
+
+    lib.vector_div.argtypes = [vector, ctypes.c_float]
+    lib.vector_div.restype = vector
+
+    lib.vector_magnitude.argtypes = [vector]
+    lib.vector_magnitude.restype = ctypes.c_float
+
+    lib.vector_normalized.argtypes = [vector]
+    lib.vector_normalized.restype = vector
+
+    lib.vector_multiplication.argtypes = [vector, vector]
+    lib.vector_multiplication.restype = vector
+
+    lib.free_vector.argtypes = [ctypes.POINTER(vector)]
+    lib.free_vector.restype = None
+
+    return lib
+
+
+_lib = _configure_lib(ctypes.CDLL("./libvector.so"))
+
+
+class vector(ctypes.Structure):
+    _fields_ = [
+        ("components", ctypes.POINTER(ctypes.float)),
+        ("dimensions", ctypes.c_int)
+    ]
+
+
     def __init__(self, array):
-        self.array = list(array)
+        arr = (ctypes.c_float * len(array))(*array)
+        built = _lib.vector_from_array(arr, len(array))
+        self.components = built.components
+        self.dimensions = built.dimensions
+
+    
+    def __del__(self):
+        try:
+            if self.components:
+                _lib.free_vector(ctypes.byref(self))
+        except (ValueError, AttributeError):
+            pass
+
 
     def __len__(self):
-        return len(self.array)
+        return self.dimensions
+
 
     def __iter__(self):
-        return iter(self.array)
+        return (self.components[i] for i in range(self.dimensions))
+
 
     def __getitem__(self, index):
-        return self.array[index]
+        if not 0 <= index < self.dimensions:
+            raise IndexError("vector index out of range")
+        return self.components[index]
+
 
     def __setitem__(self, index, value):
-        self.array[index] = value
+        if not 0 <= index < self.dimensions:
+            raise IndexError("vector index out of range")
+        self.components[index] = value
+
+
+    @property
+    def array(self):
+        return self  # already sequence-like: index/iterate/len read the C buffer
+
+
+    @array.setter
+    def array(self, values):
+        values = list(values)
+        arr = (ctypes.c_float * len(values))(*values)
+        built = _lib.vector_from_array(arr, len(values))
+        if self.components:
+            _lib.free_vector(ctypes.byref(self))
+        self.components = built.components
+        self.dimensions = built.dimensions
+
+
+    def __repr__(self):
+        return f"vector({list(self)})"
+
 
     def __eq__(self, other):
         if not isinstance(other, vector):
             return NotImplemented
-        return self.array == other.array
+        if self.dimensions != other.dimensions:
+            return False
+        return list(self) == list(other)
 
-    def __repr__(self):
-        return f"vector({self.array})"
 
-    def _check_len(self, other):
-        if len(self.array) != len(other.array):
-            raise ValueError(
-                f"vector length mismatch: {len(self.array)} vs {len(other.array)}"
-            )
+    def check_len(self, other):
+        if self.dimensions != other.dimensions:
+            raise ValueError("Vector length mismatch")
+
 
     def __add__(self, other):
         if not isinstance(other, vector):
             return NotImplemented
         self._check_len(other)
-        return vector([a + b for a, b in zip(self.array, other.array)])
+        return _lib.vector_add(self, other)
+
 
     def __sub__(self, other):
         if not isinstance(other, vector):
             return NotImplemented
         self._check_len(other)
-        return vector([a - b for a, b in zip(self.array, other.array)])
+        return _lib.vector_subtract(self, other)
+
 
     def __neg__(self):
-        return vector([-a for a in self.array])
+        return _lib.vector_negate(self)
+
 
     def __mul__(self, other):
         if isinstance(other, (int, float)):
-            return vector([a * other for a in self.array])
+            return vector([a * other for a in self])
         if isinstance(other, vector):
+            # dot product isn't in vector.c (vector_multiplication is a
+            # cross/wedge product), so it stays pure Python
             self._check_len(other)
-            return sum(a * b for a, b in zip(self.array, other.array))
+            return sum(a * b for a, b in zip(self, other))
         return NotImplemented
+
 
     def __rmul__(self, other):
         if isinstance(other, (int, float)):
-            return vector([a * other for a in self.array])
+            return vector([a * other for a in self])
         return NotImplemented
+
 
     def __truediv__(self, other):
         if isinstance(other, (int, float)):
-            return vector([a / other for a in self.array])
+            return _lib.vector_div(self, ctypes.c_float(other))
         return NotImplemented
 
+
     def magnitude(self):
-        return math.sqrt(sum(a * a for a in self.array))
+        return _lib.vector_magnitude(self)
+
 
     def normalized(self):
-        m = self.magnitude()
-        if m == 0:
+        if self.magnitude() == 0:
             raise ZeroDivisionError("cannot normalize a zero-length vector")
-        return self / m
+        return _lib.vector_normalized(self)
+
 
     def __matmul__(self, other):
         if not isinstance(other, vector):
             return NotImplemented
         self._check_len(other)
-        n = len(self.array)
-        if n == 2:
-            ax, ay = self.array
-            bx, by = other.array
-            return ax * by - ay * bx
-        if n == 3:
-            ax, ay, az = self.array
-            bx, by, bz = other.array
-            return vector([
-                ay * bz - az * by,
-                az * bx - ax * bz,
-                ax * by - ay * bx,
-            ])
-        raise ValueError(
-            f"cross product requires 2D or 3D vectors, got length {n}"
-        )
-
+        if self.dimensions not in (2, 3):
+            raise ValueError(
+                f"cross product requires 2D or 3D vectors, got length {self.dimensions}"
+            )
+        result = _lib.vector_multiplication(self, other)
+        if result.dimensions == 1:
+            return result.components[0]  # matches original: 2D "cross" is a scalar
+        return result
 
 def sign(a):
     return a >= 0
