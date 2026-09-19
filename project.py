@@ -6,7 +6,7 @@ import os
 
 os.add_dll_directory(r"C:\msys64\ucrt64\bin")
 
-vector_library = ctypes.CDLL("C:\Users\ASUS\Desktop\Projects\Projector\vector.dll")
+vector_library = ctypes.CDLL(os.path.join(os.path.dirname(os.path.abspath(__file__)), "vector.dll"))
 screen = 80, 64
 focal_length = 64
 screen_rel = screen[0] / (2 * focal_length), screen[1] / (2 * focal_length)
@@ -16,43 +16,9 @@ Z_maximum = 2 << 7
 Z_minimum = 0
 
 
-def _configure_lib(lib):
-    lib.vector_from_array.argtypes = [ctypes.POINTER(ctypes.c_float), ctypes.c_int]
-    lib.vector_from_array.restype = vector
-
-    lib.vector_add.argtypes = [vector, vector]
-    lib.vector_add.restype = vector
-
-    lib.vector_subtract.argtypes = [vector, vector]
-    lib.vector_subtract.restype = vector
-
-    lib.vector_negate.argtypes = [vector]
-    lib.vector_negate.restype = vector
-
-    lib.vector_div.argtypes = [vector, ctypes.c_float]
-    lib.vector_div.restype = vector
-
-    lib.vector_magnitude.argtypes = [vector]
-    lib.vector_magnitude.restype = ctypes.c_float
-
-    lib.vector_normalized.argtypes = [vector]
-    lib.vector_normalized.restype = vector
-
-    lib.vector_multiplication.argtypes = [vector, vector]
-    lib.vector_multiplication.restype = vector
-
-    lib.free_vector.argtypes = [ctypes.POINTER(vector)]
-    lib.free_vector.restype = None
-
-    return lib
-
-
-_lib = _configure_lib(ctypes.CDLL("./libvector.so"))
-
-
 class vector(ctypes.Structure):
     _fields_ = [
-        ("components", ctypes.POINTER(ctypes.float)),
+        ("components", ctypes.POINTER(ctypes.c_float)),
         ("dimensions", ctypes.c_int)
     ]
 
@@ -62,6 +28,7 @@ class vector(ctypes.Structure):
         built = _lib.vector_from_array(arr, len(array))
         self.components = built.components
         self.dimensions = built.dimensions
+        built.components = None   # transfer ownership — stop built.__del__ from freeing our buffer
 
     
     def __del__(self):
@@ -128,14 +95,14 @@ class vector(ctypes.Structure):
     def __add__(self, other):
         if not isinstance(other, vector):
             return NotImplemented
-        self._check_len(other)
+        self.check_len(other)
         return _lib.vector_add(self, other)
 
 
     def __sub__(self, other):
         if not isinstance(other, vector):
             return NotImplemented
-        self._check_len(other)
+        self.check_len(other)
         return _lib.vector_subtract(self, other)
 
 
@@ -147,10 +114,8 @@ class vector(ctypes.Structure):
         if isinstance(other, (int, float)):
             return vector([a * other for a in self])
         if isinstance(other, vector):
-            # dot product isn't in vector.c (vector_multiplication is a
-            # cross/wedge product), so it stays pure Python
-            self._check_len(other)
-            return sum(a * b for a, b in zip(self, other))
+            self.check_len(other)
+            return _lib.vector_scalar_mul(self, other)
         return NotImplemented
 
 
@@ -179,7 +144,7 @@ class vector(ctypes.Structure):
     def __matmul__(self, other):
         if not isinstance(other, vector):
             return NotImplemented
-        self._check_len(other)
+        self.check_len(other)
         if self.dimensions not in (2, 3):
             raise ValueError(
                 f"cross product requires 2D or 3D vectors, got length {self.dimensions}"
@@ -188,6 +153,44 @@ class vector(ctypes.Structure):
         if result.dimensions == 1:
             return result.components[0]  # matches original: 2D "cross" is a scalar
         return result
+
+
+def _configure_lib(lib):
+    lib.vector_from_array.argtypes = [ctypes.POINTER(ctypes.c_float), ctypes.c_int]
+    lib.vector_from_array.restype = vector
+
+    lib.vector_add.argtypes = [vector, vector]
+    lib.vector_add.restype = vector
+
+    lib.vector_subtract.argtypes = [vector, vector]
+    lib.vector_subtract.restype = vector
+
+    lib.vector_negate.argtypes = [vector]
+    lib.vector_negate.restype = vector
+
+    lib.vector_div.argtypes = [vector, ctypes.c_float]
+    lib.vector_div.restype = vector
+
+    lib.vector_magnitude.argtypes = [vector]
+    lib.vector_magnitude.restype = ctypes.c_float
+
+    lib.vector_normalized.argtypes = [vector]
+    lib.vector_normalized.restype = vector
+
+    lib.vector_multiplication.argtypes = [vector, vector]
+    lib.vector_multiplication.restype = vector
+
+    lib.free_vector.argtypes = [ctypes.POINTER(vector)]
+    lib.free_vector.restype = None
+
+    lib.vector_scalar_mul.argtypes = [vector, vector]
+    lib.vector_scalar_mul.restype = ctypes.c_float
+
+    return lib
+
+
+_lib = _configure_lib(vector_library)
+
 
 def sign(a):
     return a >= 0
@@ -251,9 +254,6 @@ def DoIntersect(line: list[list[int]]) -> bool:
     if point0[0] == point1[0] == 1:
         if point0[1][0] == point1[1][0] or point0[1][1] == point1[1][1]:
             return True
-
-    
-        
 
 
 def PolygonOnScreen(points: list[list[int]]) -> bool:
@@ -446,32 +446,6 @@ def nearest_entry(a, b, z0=Z_minimum, z1=Z_maximum, srx=screen_rel[0], sry=scree
     return (ax+t*dx, ay+t*dy, az+t*dz), t
 
 
-def calculate_t0(dt_: list[float], t0_: list[float], plane_index: int) -> float:
-    dtx, dty, dtz = dt_
-    t0x, t0y, t0z = t0_
-
-    match plane_index:
-        case 1:
-            # plane x = srx * z
-            return (screen_rel[0] * t0z - t0x) / (dtx - screen_rel[0] * dtz)
-        case 2:
-            # plane x = -srx * z
-            return -(screen_rel[0] * t0z + t0x) / (dtx + screen_rel[0] * dtz)
-        case 3:
-            # plane x = sry * z
-            return (screen_rel[1] * t0z - t0y) / (dty - screen_rel[1] * dtz)
-        case 4:
-            # plane x = -sry * z
-            return -(screen_rel[1] * t0z + t0y) / (dty + screen_rel[1] * dtz)
-        case 5:
-            # z = Z_maximum
-            return (Z_maximum - t0z) / dtz
-        case 5:
-            # z = Z_minimum
-            # while z_minimum = 0 shouldnt be called
-            return (Z_minimum - t0z) / dtz
-
-
 def line_precomputation(start_point: list[int], end_point: list[int]) -> list[list[int]]:
     """Splits line intersection viewing frustrum into 3 general cases
     0, 1 or 2 intersection points and computes based on that only nedded intersection checks"""
@@ -551,17 +525,12 @@ def compute_end_points(vectors: list[list[int]]):
 
 
 def main() -> None:
-    """
-    img = Image.new('RGB', screen, color='black')
-    vect1 = [-1, -1, 8]
-    vect2 = [-1, 1, 8]
-    vect3 = [1, -1, 8]
-    special_points = compute_end_points([vect1, vect2, vect3])
-    for point in special_points[0]:
-        img.putpixel(project_vertex(point), (0, 0, 255))
+    vector1 = vector([1, 2, 3])
+    vector2 = vector([2, 4, 6])
+    print(vector1)
+    print(vector2)
+    print(vector1 + vector2)
+    print((vector1 * vector2))
 
-    for point in special_points[1]:
-        img.putpixel(project_vertex(point), (0, 255, 0))
-
-    img.save('test.png')"""
-
+if __name__ == "__main__":
+    main()

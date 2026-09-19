@@ -161,7 +161,7 @@ struct vector vector_normalized(struct vector a){
 
 
 float vector_scalar_mul(struct vector a, struct vector b){
-    float result;
+    float result = 0.0f;
 
     for (int i = 0; i < a.dimensions; i++){
         result += a.components[i] * b.components[i];
