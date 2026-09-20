@@ -127,7 +127,7 @@ struct vector vector_negate(struct vector a){
 
 struct vector vector_div(struct vector a, float b){
     struct vector c;
-
+    
     c.dimensions = a.dimensions;
     c.components = NULL;
 
@@ -135,10 +135,12 @@ struct vector vector_div(struct vector a, float b){
         return c; 
     }
 
+    float inv_b = 1.0f / b;
+
     c.components = malloc(c.dimensions * sizeof(float));
 
     for (int i = 0; i < a.dimensions; i++){
-        c.components[i] = a.components[i] / b;
+        c.components[i] = a.components[i] * inv_b;
     }
 
     return c;

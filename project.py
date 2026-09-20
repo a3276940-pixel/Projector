@@ -213,20 +213,6 @@ def DoIntersect(line: list[list[int]]) -> bool:
     for i in range(4):
         corner = [(1 if (i - 1) // 2 != 0 else -1) * screen[0] >> 1, (1 if i // 2 == 0 else -1) * screen[1] >> 1]
         vec[i] = corner - line[0]
-
-
-    def get_direction(A, B):
-        # Map each cell to its clockwise order index
-        order = {
-            (1, 2): 0,
-            (2, 1): 1,
-            (1, 0): 2,
-            (0, 1): 3
-        }
-    
-        diff = (order[B] - order[A]) % 4
-    
-        return 1 if diff == 1 else -1
     
 
     def point_type_position(point):
@@ -237,23 +223,52 @@ def DoIntersect(line: list[list[int]]) -> bool:
                 return 1
             return 2
 
-        position = [point_interval_div(point[0], [-screen[0] > 1, screen[0] > 1]),\
-                    point_interval_div(point[1], [-screen[1] > 1, screen[1] > 1])]
+        position = [point_interval_div(point[0], [-screen[0] >> 1, screen[0] >> 1]),\
+                    point_interval_div(point[1], [-screen[1] >> 1, screen[1] >> 1])]
 
         # 0 1 | 1 0 | 2 1 | 1 2
-        point_type = (2 if position[1] - position[0] == 1 else 1)
+        point_type = (2 if abs(position[1] - position[0]) == 1 else 1)
         return point_type, position
 
     point0 = point_type_position(line[0])
     point1 = point_type_position(line[1])
-    if any(point0[1][i] == point1[1][i] and point0[1][i] in (0, 2) for i in range(2)):
+
+    # checks if points are completely outside
+    if any(point0[1][i] == point1[1][i] != 1 for i in range(2)):
         return False
 
+    # checks if points cross the rectangle diagonally
     if point0[0] == point1[0] == 2:
         return True
+
+    # checks if both points are on row/column 1 => intersect rectangle
     if point0[0] == point1[0] == 1:
         if point0[1][0] == point1[1][0] or point0[1][1] == point1[1][1]:
             return True
+
+    corners_to_check = []
+
+    # position encoding to vector class
+    point0_ = vector(point0[1]) - vector([1, 1])
+    point1_ = vector(point1[0]) - vector([1, 1])
+
+    def pos_to_corners(type_: int, pos: vector) -> list[vector]:
+
+        if type_ == 2:
+            return list(pos)
+
+        # type 1
+        # delta vector is just change in direction
+        #  1 0 and 0 -1 if point is at position -1 0 or 0 1 line which div space with frustrum is horizontal
+        delta_vec = vector([(0 if pos[0] == 0 else 1), (0 if pos[1] == 0 else 1)])
+
+        return pos + delta_vec, pos - delta_vec
+
+
+    if point0[0] == 1:
+        corners_to_check.append()
+
+    
 
 
 def PolygonOnScreen(points: list[list[int]]) -> bool:
@@ -331,29 +346,12 @@ def orientation(p1: list[int, int, int], p2: list[int, int, int], p3: list[int, 
         return True
 
 
-def on_screen(points: list[int]) -> bool:
+def on_screen(points: vector) -> bool:
     # checks if any point in 3d when projected is on screen
     return abs(points[0]) <= abs(points[2]) * screen_rel[0]\
        and abs(points[1]) <= abs(points[2]) * screen_rel[1]\
        and points[2] >= Z_minimum\
        and points[2] <= Z_maximum
-
-
-def min_line_on_screen(start_point, end_point):
-    # computes the nearest point on start_end vector closest to start point
-
-    vec_chang = sub_div_ * (end_point - start_point)
-    point = start_point
-
-    for i in range(sub_div):
-        if on_screen(point.array):
-            return point.array
-        point += vec_chang
-
-    if on_screen(point.array):
-        return point.array
-    else:
-        return False 
 
 
 def seperate_point_beetween_lines(line, point):
@@ -473,7 +471,7 @@ def family_of_lines(delta_vec: vector, driv: vector, zero_point: vector, num_lin
     start_point = [] * num_line
     end_point = [] * num_line
     corners = [zero_point, zero_point + delta_vec, zero_point + 8 * driv, zero_point + delta_vec + 8 * driv]
-    if all(on_screen(corner.array) for corner in corners):
+    if all(on_screen(corner) for corner in corners):
 
         start_point[0] = zero_point
         end_point[0] = start_point[0] + delta_vec
