@@ -246,8 +246,6 @@ def DoIntersect(line: list[list[int]]) -> bool:
         if point0[1][0] == point1[1][0] or point0[1][1] == point1[1][1]:
             return True
 
-    corners_to_check = []
-
     # position encoding to vector class
     point0_ = vector(point0[1]) - vector([1, 1])
     point1_ = vector(point1[0]) - vector([1, 1])
@@ -255,21 +253,17 @@ def DoIntersect(line: list[list[int]]) -> bool:
     def pos_to_corners(type_: int, pos: vector) -> list[vector]:
 
         if type_ == 2:
-            return list(pos)
+            return [pos]
 
         # type 1
         # delta vector is just change in direction
         #  1 0 and 0 -1 if point is at position -1 0 or 0 1 line which div space with frustrum is horizontal
         delta_vec = vector([(0 if pos[0] == 0 else 1), (0 if pos[1] == 0 else 1)])
 
-        return pos + delta_vec, pos - delta_vec
+        return [pos + delta_vec, pos - delta_vec]
 
 
-    if point0[0] == 1:
-        corners_to_check.append()
-
-    
-
+    corner_to_check = [x for x in pos_to_corners(point0[0], line[0]) if x in set(pos_to_corners(point1[0], line[1]))][0]
 
 def PolygonOnScreen(points: list[list[int]]) -> bool:
     minx = min(p[0] for p in points)
