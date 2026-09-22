@@ -1,5 +1,6 @@
 from __future__ import annotations
 import math
+import re
 from PIL import Image
 import ctypes
 import os
@@ -22,14 +23,12 @@ class vector(ctypes.Structure):
         ("dimensions", ctypes.c_int)
     ]
 
-
     def __init__(self, array):
         arr = (ctypes.c_float * len(array))(*array)
         built = _lib.vector_from_array(arr, len(array))
         self.components = built.components
         self.dimensions = built.dimensions
         built.components = None   # transfer ownership — stop built.__del__ from freeing our buffer
-
     
     def __del__(self):
         try:
@@ -38,31 +37,25 @@ class vector(ctypes.Structure):
         except (ValueError, AttributeError):
             pass
 
-
     def __len__(self):
         return self.dimensions
 
-
     def __iter__(self):
         return (self.components[i] for i in range(self.dimensions))
-
 
     def __getitem__(self, index):
         if not 0 <= index < self.dimensions:
             raise IndexError("vector index out of range")
         return self.components[index]
 
-
     def __setitem__(self, index, value):
         if not 0 <= index < self.dimensions:
             raise IndexError("vector index out of range")
         self.components[index] = value
 
-
     @property
     def array(self):
         return self  # already sequence-like: index/iterate/len read the C buffer
-
 
     @array.setter
     def array(self, values):
@@ -74,10 +67,8 @@ class vector(ctypes.Structure):
         self.components = built.components
         self.dimensions = built.dimensions
 
-
     def __repr__(self):
         return f"vector({list(self)})"
-
 
     def __eq__(self, other):
         if not isinstance(other, vector):
@@ -86,11 +77,9 @@ class vector(ctypes.Structure):
             return False
         return list(self) == list(other)
 
-
     def check_len(self, other):
         if self.dimensions != other.dimensions:
             raise ValueError("Vector length mismatch")
-
 
     def __add__(self, other):
         if not isinstance(other, vector):
@@ -98,17 +87,14 @@ class vector(ctypes.Structure):
         self.check_len(other)
         return _lib.vector_add(self, other)
 
-
     def __sub__(self, other):
         if not isinstance(other, vector):
             return NotImplemented
         self.check_len(other)
         return _lib.vector_subtract(self, other)
 
-
     def __neg__(self):
         return _lib.vector_negate(self)
-
 
     def __mul__(self, other):
         if isinstance(other, (int, float)):
@@ -118,28 +104,23 @@ class vector(ctypes.Structure):
             return _lib.vector_scalar_mul(self, other)
         return NotImplemented
 
-
     def __rmul__(self, other):
         if isinstance(other, (int, float)):
             return vector([a * other for a in self])
         return NotImplemented
-
 
     def __truediv__(self, other):
         if isinstance(other, (int, float)):
             return _lib.vector_div(self, ctypes.c_float(other))
         return NotImplemented
 
-
     def magnitude(self):
         return _lib.vector_magnitude(self)
-
 
     def normalized(self):
         if self.magnitude() == 0:
             raise ZeroDivisionError("cannot normalize a zero-length vector")
         return _lib.vector_normalized(self)
-
 
     def __matmul__(self, other):
         if not isinstance(other, vector):
@@ -153,7 +134,6 @@ class vector(ctypes.Structure):
         if result.dimensions == 1:
             return result.components[0]  # matches original: 2D "cross" is a scalar
         return result
-
 
 def _configure_lib(lib):
     lib.vector_from_array.argtypes = [ctypes.POINTER(ctypes.c_float), ctypes.c_int]
@@ -191,14 +171,11 @@ def _configure_lib(lib):
 
 _lib = _configure_lib(vector_library)
 
-
 def sign(a):
     return a >= 0
 
-
 def cross(vec1: list[int], vec2: list[int]) -> int:
     return vec1[0] * vec2[1] - vec2[0] * vec1[1]
-
 
 def DoBelong(point: list[int], interval: list[int])  -> bool:
     point = list(map(abs, point))
@@ -207,14 +184,12 @@ def DoBelong(point: list[int], interval: list[int])  -> bool:
     else:
         return False 
 
-
 def DoIntersect(line: list[list[int]]) -> bool:
     vec = [None] * 4
     for i in range(4):
         corner = [(1 if (i - 1) // 2 != 0 else -1) * screen[0] >> 1, (1 if i // 2 == 0 else -1) * screen[1] >> 1]
         vec[i] = corner - line[0]
     
-
     def point_type_position(point):
         def point_interval_div(point, interval):
             if interval[0] > point:
@@ -262,14 +237,16 @@ def DoIntersect(line: list[list[int]]) -> bool:
 
         return [pos + delta_vec, pos - delta_vec]
 
+    corner_to_check = [x for x in pos_to_corners(point0[0], point0_) if x in set(pos_to_corners(point1[0], point1_))][0]
 
-    corner_to_check = [x for x in pos_to_corners(point0[0], line[0]) if x in set(pos_to_corners(point1[0], line[1]))][0]
+    return (-point0_ @ (corner_to_check - point0_) >= 0) == (line[1] - line[0])\
+          @ (vector(corner_to_check[0] * screen[0] / 2 + corner_to_check[1] * screen[1] / 2) >= 0)
 
 def PolygonOnScreen(points: list[list[int]]) -> bool:
     minx = min(p[0] for p in points)
     miny = min(p[1] for p in points)
     maxx = max(p[0] for p in points)
-    maxy = max(p[1] for p in points) 
+    maxy = max(p[1] for p in points)
     
     if (DoBelong([minx, miny], screen)\
     and DoBelong([maxx, maxy], screen))\
@@ -281,7 +258,6 @@ def PolygonOnScreen(points: list[list[int]]) -> bool:
             return True
     return False
 
-
 def project_vertex(vertex: list[float]) -> list[int]:
     x, y, z = vertex[0], vertex[1], vertex[2]
     if z == 0:
@@ -289,7 +265,6 @@ def project_vertex(vertex: list[float]) -> list[int]:
     x_projected = int(focal_length * x // z) + screen[0] // 2
     y_projected = int(focal_length * y // z) + screen[1] // 2
     return x_projected, y_projected
-
 
 def choose_direction(p0: list[int, int],
                      p1: list[int, int],
@@ -307,7 +282,6 @@ def choose_direction(p0: list[int, int],
             return i, 0
         if p0[0] == min_max[0][i // 2] and p0[1] == min_max[1][i % 2]:
             return i, 0
-
 
 def orientation(p1: list[int, int, int], p2: list[int, int, int], p3: list[int, int, int], normal=(0, 0, 1)):
     """
@@ -339,14 +313,12 @@ def orientation(p1: list[int, int, int], p2: list[int, int, int], p3: list[int, 
     else:
         return True
 
-
 def on_screen(points: vector) -> bool:
     # checks if any point in 3d when projected is on screen
     return abs(points[0]) <= abs(points[2]) * screen_rel[0]\
        and abs(points[1]) <= abs(points[2]) * screen_rel[1]\
        and points[2] >= Z_minimum\
        and points[2] <= Z_maximum
-
 
 def seperate_point_beetween_lines(line, point):
     # line is set as a point the line is from 0 0 to the point the other point is symetrical
@@ -358,7 +330,6 @@ def seperate_point_beetween_lines(line, point):
     if cross0 <= 0:
         return 0
     return 2
-
 
 def point_space_div(point):
     # position is encoded in 3rd number system
@@ -377,7 +348,6 @@ def point_space_div(point):
     if point[2] < 0:
         return point_type + 1, 0, 8 - position
 
-
 def closest_plane(line: vector, cross_mul: vector, planes: list[int]):
     x0, y0, z0 = line[0]
     x1, y1, z1 = line[1]
@@ -391,7 +361,6 @@ def closest_plane(line: vector, cross_mul: vector, planes: list[int]):
         if on_screen(line[0]):
             return
     return
-
 
 def nearest_entry(a, b, z0=Z_minimum, z1=Z_maximum, srx=screen_rel[0], sry=screen_rel[1]):
     """Closest point along a->b (t in [0,1]) that's inside the frustum,
@@ -437,7 +406,6 @@ def nearest_entry(a, b, z0=Z_minimum, z1=Z_maximum, srx=screen_rel[0], sry=scree
 
     return (ax+t*dx, ay+t*dy, az+t*dz), t
 
-
 def line_precomputation(start_point: list[int], end_point: list[int]) -> list[list[int]]:
     """Splits line intersection viewing frustrum into 3 general cases
     0, 1 or 2 intersection points and computes based on that only nedded intersection checks"""
@@ -460,7 +428,6 @@ def line_precomputation(start_point: list[int], end_point: list[int]) -> list[li
 
     return list[start, end]
 
-
 def family_of_lines(delta_vec: vector, driv: vector, zero_point: vector, num_line: int) -> list[list[float]]:
     start_point = [] * num_line
     end_point = [] * num_line
@@ -482,7 +449,6 @@ def family_of_lines(delta_vec: vector, driv: vector, zero_point: vector, num_lin
 
 
     return
-
 
 def compute_end_points(vectors: list[list[int]]):
     """
@@ -514,7 +480,6 @@ def compute_end_points(vectors: list[list[int]]):
     lines.append(line_precomputation(start_point[0], end_point[0]))
     lines.append(line_precomputation(start_point[1], end_point[1]))
     return lines
-
 
 def main() -> None:
     vector1 = vector([1, 2, 3])
