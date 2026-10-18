@@ -171,12 +171,6 @@ def _configure_lib(lib):
 
 _lib = _configure_lib(vector_library)
 
-def sign(a):
-    return a >= 0
-
-def cross(vec1: list[int], vec2: list[int]) -> int:
-    return vec1[0] * vec2[1] - vec2[0] * vec1[1]
-
 def DoBelong(point: list[int], interval: list[int])  -> bool:
     point = list(map(abs, point))
     if point[0] <= interval[0] / 2 and point[1] <= interval[1] / 2:
@@ -266,23 +260,6 @@ def project_vertex(vertex: list[float]) -> list[int]:
     y_projected = int(focal_length * y // z) + screen[1] // 2
     return x_projected, y_projected
 
-def choose_direction(p0: list[int, int],
-                     p1: list[int, int],
-                     p2: list[int, int]) -> str | int:
-    #0 - x+ y+ 1 - x+ y- 2 - x- y+ 3 - x- y-
-    min_max = [[], []]
-    min_max[0][0].append(min(p0[0], p1[0], p2[0])) # minimum x
-    min_max[0][1].append(max(p0[0], p1[0], p2[0])) # maximum x
-    min_max[1][0].append(min(p0[1], p1[1], p2[1])) # minimum y
-    min_max[1][1].append(max(p0[1], p1[1], p2[1])) # maximum y
-    for i in range(4):
-        if p0[0] == min_max[0][i // 2] or p0[1] == min_max[1][i % 2]:
-            return i, 0
-        if p0[0] == min_max[0][i // 2] and p0[1] == min_max[1][i % 2]:
-            return i, 0
-        if p0[0] == min_max[0][i // 2] and p0[1] == min_max[1][i % 2]:
-            return i, 0
-
 def orientation(p1: list[int, int, int], p2: list[int, int, int], p3: list[int, int, int], normal=(0, 0, 1)):
     """
     Determine if three points are clockwise (CW), counterclockwise (CCW), or collinear
@@ -320,174 +297,8 @@ def on_screen(points: vector) -> bool:
        and points[2] >= Z_minimum\
        and points[2] <= Z_maximum
 
-def seperate_point_beetween_lines(line, point):
-    # line is set as a point the line is from 0 0 to the point the other point is symetrical
-    # returns if line is to the left in beetwen or right
-    cross0 = cross(line, point)
-    cross1 = cross((line[0], -line[1]), point)
-    if (cross0 > 0) ^ (cross1 > 0):
-        return 1 # inbeetwen
-    if cross0 <= 0:
-        return 0
-    return 2
-
-def point_space_div(point):
-    # position is encoded in 3rd number system
-    # and 1 3 5 and 7 are first type where we can know for sure the closest plane
-    # 2 is for the volume it is in
-    position = 3 * seperate_point_beetween_lines((screen[0], screen[2]), (point[0], point[2])) +\
-                   seperate_point_beetween_lines((screen[1], screen[2]), (point[1], point[2]))
-    point_type = (1 if position == 1 or position == 3 or position == 5 or position == 7 else 0)
-
-    if Z_minimum < point[2] < Z_maximum and not on_screen(point):
-        return point_type + 1, 2, position
-    if point[2] > Z_maximum:
-        return point_type + 1, 3, position
-    if 0 <= point[2] <= Z_minimum:
-        return point_type + 1, 1, position
-    if point[2] < 0:
-        return point_type + 1, 0, 8 - position
-
-def closest_plane(line: vector, cross_mul: vector, planes: list[int]):
-    x0, y0, z0 = line[0]
-    x1, y1, z1 = line[1]
-    dx, dy, dz = line[1] - line[0]
-
-    for plane in planes:
-        if plane[0] < 0 ^ plane[1] >= 0: # never enters 
-            return None
-
-    if on_screen(line[0]) or on_screen(line[1]):
-        if on_screen(line[0]):
-            return
-    return
-
-def nearest_entry(a, b, z0=Z_minimum, z1=Z_maximum, srx=screen_rel[0], sry=screen_rel[1]):
-    """Closest point along a->b (t in [0,1]) that's inside the frustum,
-    or None if the segment never enters. a itself may be inside already.
-    Exactly one division. Call nearest_entry(b, a, ...) and use t_far = 1 - t
-    to get the far point instead, when you need it."""
-    # Claude vibecoded
-    ax, ay, az = a
-    bx, by, bz = b
-    dx, dy, dz = bx-ax, by-ay, bz-az
-    srx_az, srx_dz = srx*az, srx*dz
-    sry_az, sry_dz = sry*az, sry*dz
-
-    planes = (
-        (az-z0, dz), (z1-az, -dz),
-        (srx_az-ax, srx_dz-dx), (ax+srx_az, dx+srx_dz),
-        (sry_az-ay, sry_dz-dy), (ay+sry_az, dy+sry_dz),
-    )
-
-    best_L0 = best_L1 = None
-    check_list = []                        # satisfied-at-a, decreasing planes
-    for L0, L1 in planes:
-        if L0 < 0.0:
-            if L1 <= 0.0:
-                return None                # violated forever, never enters
-            if best_L0 is None or best_L0*L1 - L0*best_L1 > 0.0:
-                best_L0, best_L1 = L0, L1
-        elif L1 < 0.0:
-            check_list.append((L0, L1))
-
-    if best_L0 is None:
-        return a, 0.0                      # a already inside
-
-
-    t = -best_L0 / best_L1
-    if t > 1.0:
-        return None
-
-
-    for L0, L1 in check_list:              # confirm nothing else broke by then
-        if L0 + t*L1 < 0.0:
-            return None
-
-    return (ax+t*dx, ay+t*dy, az+t*dz), t
-
-def line_precomputation(start_point: list[int], end_point: list[int]) -> list[list[int]]:
-    """Splits line intersection viewing frustrum into 3 general cases
-    0, 1 or 2 intersection points and computes based on that only nedded intersection checks"""
-
-    start_point_on_screen = on_screen(start_point)
-    end_point_on_screen = on_screen(end_point)
-    if start_point_on_screen and end_point_on_screen:
-        start = start_point
-        end = end_point
-    elif start_point_on_screen ^ end_point_on_screen:
-        if start_point_on_screen:
-            start = start_point
-            end = nearest_entry(end_point, start_point)
-        else:
-            start = nearest_entry(start_point, end_point)
-            end = end_point
-    else:
-        start = nearest_entry(start_point, end_point)
-        end = nearest_entry(end_point, start_point)
-
-    return list[start, end]
-
-def family_of_lines(delta_vec: vector, driv: vector, zero_point: vector, num_line: int) -> list[list[float]]:
-    start_point = [] * num_line
-    end_point = [] * num_line
-    corners = [zero_point, zero_point + delta_vec, zero_point + 8 * driv, zero_point + delta_vec + 8 * driv]
-    if all(on_screen(corner) for corner in corners):
-
-        start_point[0] = zero_point
-        end_point[0] = start_point[0] + delta_vec
-
-        for index in range(num_line):
-            start_point[index + 1] = start_point[index] + driv
-            end_point[index + 1] = start_point[index + 1] + delta_vec
-
-        return zip(start_point, end_point)
-    cross_multiplication = [[[] * (5 if Z_minimum == 0 else 6)] * num_line]
-    for _ in range(num_line + 1):
-        #calculate all cross multiplcation for first line
-        print()
-
-
-    return
-
-def compute_end_points(vectors: list[list[int]]):
-    """
-    Computes end(minimum amd maximum u,v ∈ [0, 1] 0; 1/8 ,..., 1) points of a lines in square which are on a screen
-
-    18 lines 0-9 u or v
-    """
-    iterations_left = sub_div
-    lines = []
-    start_point = vector([vectors[0], vectors[0]])
-    end_point = vector([vectors[1], vectors[2]])
-    v0, v1, v2 = vector(vectors[0]), vector(vectors[1]), vector(vectors[2])
-    start_point = [v0, v0]
-    end_point = [v1, v2]
-    delta_v = v1 - v0, v2 - v0 # dw1, dw2
-    sub_delta_v = [sub_div_ * delta_v[0], sub_div_ * delta_v[1]]
-
-    while iterations_left >= 0:
-        lines.append(line_precomputation(start_point[0], end_point[0]))
-        lines.append(line_precomputation(start_point[1], end_point[1]))
-
-        start_point[0] += sub_delta_v[1]
-        start_point[1] += sub_delta_v[0]
-        end_point[0] += sub_delta_v[1]
-        end_point[1] += sub_delta_v[0]
-
-        iterations_left -= 1
-
-    lines.append(line_precomputation(start_point[0], end_point[0]))
-    lines.append(line_precomputation(start_point[1], end_point[1]))
-    return lines
-
 def main() -> None:
-    vector1 = vector([1, 2, 3])
-    vector2 = vector([2, 4, 6])
-    print(vector1)
-    print(vector2)
-    print(vector1 + vector2)
-    print((vector1 * vector2))
+    return
 
 if __name__ == "__main__":
     main()
