@@ -25,11 +25,15 @@ class line:
         def sort_(first, second):
             return sorted([first, second]), first >= second
 
-        def configure_deltas(delta):
-            
-
-            return
-
+        def configure_deltas(deltax, deltay):
+            # it forces further algorithm to increment y and compute runs for x
+            # this behaviour do not make it run faster but is make to follow minecraft behaviour
+            #  as it is currently imposible to do runs for y as simple as for x
+            # (bool) * 2 - 1 -> -1 or 1
+            return abs(deltax) % abs(deltay), ((deltax >= 0) * 2 - 1) * (abs(deltax) // abs(deltay)),\
+                   abs(deltay), (deltay >= 0) * 2 - 1
+    
+        
         self.delta_x, self.delta_y, self.swapped_xy = sort_(end_point[0] - start_point[0], end_point[1] - start_point[1])
         self.delta_x, self.x_increment,
         self.delta_y, self.y_increment = configure_deltas(self.delta_x, self.delta_y)
