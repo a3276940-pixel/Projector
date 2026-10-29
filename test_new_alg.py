@@ -1,15 +1,10 @@
 from PIL import Image
 
 CELL = 10
-line_points_cache = []
 
 def draw_cell(x, y, color=(255, 255, 255)):
     """Draw a 10x10 block at cell (x, y), where cell (0, 0) is the bottom-left."""
     # vibecoded
-    line_points_cache.append((x, y))
-    if False:
-        return
-    
     left = x * CELL
     bottom = y * CELL
     for dx in range(CELL):
@@ -19,21 +14,28 @@ def draw_cell(x, y, color=(255, 255, 255)):
             if 0 <= px < img.width and 0 <= py < img.height:
                 img.putpixel((px, py), color)
 
-def draw_line(x0, y0, x1, y1):
-    def draw_run(x0, x1, y):
-        x = min(x0, x1)
+def draw_run(x0, x1, y):
+    """draws run from xmin to xmax including"""
+    x = min(x0, x1)
+    draw_cell(x, y)
+    while x < max(x0, x1):
+        x += 1
         draw_cell(x, y)
-        while x < max(x0, x1):
-            x += 1
-            draw_cell(x, y)
 
+
+def draw_line(x0, y0, x1, y1):
+    """
+    This algorithm draws line from (..., ymax) to (..., ymin)
+    That arrange of points was choosen specifically to match redstone logic
+    It simulates Bresenham algorithm or uses it and all lines are exactly as from
+    BR algorithm. It uses runs to save some time (in this instacne usual BR algorithm
+    is faster but for other problems where runs are hardware part and we need to itreate
+    over some coordinate this is significatelly faster)"""
     if y1 > y0:
         x1, x0 = x0, x1
         y1, y0 = y0, y1
-
     dx, dy = x1 - x0, y0 - y1
     x, y = x0, y0
-
     dx, dx_sign = abs(dx), 1 if dx >= 0 else -1
 
     if dy >= dx:
@@ -55,6 +57,10 @@ def draw_line(x0, y0, x1, y1):
             # all runs are drawn
             # dy >= 0
             return
+
+        # R - amount of points in run in some runs its R + 1
+        # R0 - amount of pixels in first run it varies from all other runs
+        # and is close to R1 - amount of points in last run
         
         R = dx // dy
         dx_ = dx % dy
@@ -68,14 +74,13 @@ def draw_line(x0, y0, x1, y1):
         de1 = 0 if dx_ == 0 else -2 * dx_ + 2 * dy
         dx0 = R * dx_sign
         dx1 = (R + 1 - (dx_ == 0)) * dx_sign
-        
-        # error = -dx + R0 * 2 * dy + de0
         error = de0 - dx_ + dy * (r + 2 * (r == 0) * (dx_ != 0))
 
+    # first run
     if dy >= dx:
-        draw_run(x0, x0, y0) # first run
+        draw_run(x0, x0, y0)
     else:
-        draw_run(x0, x, y0) # first run
+        draw_run(x0, x, y0)
     y -= 1
 
     while y1 < y:
@@ -85,90 +90,21 @@ def draw_line(x0, y0, x1, y1):
         else:
             error += de1
             x += dx1
-
         if dy >= dx:
             draw_run(x, x, y)
         else:
             draw_run(x_prev + dx_sign, x, y)
         x_prev = x
-
         y -= 1
 
+    # last run
     if dy >= dx:
         draw_run(x1, x1, y1)
     else:
-        draw_run(x_prev + dx_sign, x1, y1) # last run
-
+        draw_run(x_prev + dx_sign, x1, y1)
     return
 
-def draw_line_BR(x0, y0, x1, y1):
-    if y1 > y0:
-        x1, x0 = x0, x1
-        y1, y0 = y0, y1
-
-    dx, dy = x1 - x0, y0 - y1
-    x, y = x0, y0
-
-    dx_sign = 1 if dx >= 0 else -1
-    dy_sign = -1
-    dx, dy = abs(dx), abs(dy)
-
-    swapped = dy >= dx
-    if swapped:
-        dx, dy = dy, dx
-        x, y = y, x
-        dx_sign, dy_sign = dy_sign, dx_sign
-
-    # print(f"Drawing line from ({x0}, {y0}) to ({x1}, {y1}), swapped: {swapped}, dx: {dx}, dy: {dy}, dx_sign: {dx_sign}, dy_sign: {dy_sign}")
-
-    error = 2 * dy - dx
-
-    result = []
-    for _ in range(dx + 1):
-        result.append((x, y) if not swapped else (y, x))
-        if error >= 0:
-            y += dy_sign
-            error -= 2 * dx
-        x += dx_sign
-        error += 2 * dy
-    return result
-
-def check_line(x0, y0, x1, y1):
-    points = draw_line_BR(x0, y0, x1, y1)
-    for point in points:
-        if point not in line_points_cache:
-            #print(f"Point {point} is missing from the cache.")
-            return False
-
-    for point in line_points_cache:
-        if point not in points:
-            #print(f"Point {point} is extra in the cache.")
-            return False
-    return True
-
-def stress_test():
-    incorrect_count = 0
-    all_counts = 0
-    for x0 in range(10):
-        for y0 in range(10):
-            for x1 in range(10):
-                for y1 in range(10):
-                    line_points_cache.clear()
-                    draw_line(x0, y0, x1, y1)
-                    if not check_line(x0, y0, x1, y1):
-                        print(f"Line from ({x0}, {y0}) to ({x1}, {y1}) failed.")
-                        incorrect_count += 1
-                    all_counts += 1
-            print(f"Completed stress test for starting point ({x0}, {y0}), tested {all_counts} lines so far, incorrect: {incorrect_count}, progress: {(all_counts / (10 * 10 * 10 * 10)) * 100:.2f}%")
-
-    print(f"Total lines tested: {all_counts}")
-
-    if incorrect_count == 0:
-        print("All lines passed the stress test.")
-    else:
-        print(f"Failed lines: {incorrect_count} out of {all_counts} ({(incorrect_count / all_counts) * 100:.2f}%)")
 
 if __name__ == "__main__":
     img = Image.new("RGB", (250, 250), (0, 0, 0))
-    stress_test()
     img.save("test.png")
