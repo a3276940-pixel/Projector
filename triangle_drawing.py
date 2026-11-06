@@ -1,6 +1,6 @@
 import json
 from pathlib import Path
-from project import compute_end_points
+# from project import compute_end_points
 
 
 _TEXTURES_PATH = Path("Textures.json")
@@ -19,41 +19,74 @@ def get_texture(texture_index):
     return _load_all_textures()[texture_index]["texture"]
 
 
-class line:
+class Line:
     def __init__(self, start_point, end_point):
-
-        def sort_(first, second):
-            return sorted([first, second]), first >= second
-
-        def configure_deltas(deltax, deltay):
-            # it forces further algorithm to increment y and compute runs for x
-            # this behaviour do not make it run faster but is make to follow minecraft behaviour
-            #  as it is currently imposible to do runs for y as simple as for x
-            # (bool) * 2 - 1 -> -1 or 1
-            return abs(deltax) % abs(deltay), ((deltax >= 0) * 2 - 1) * (abs(deltax) // abs(deltay)),\
-                   abs(deltay), (deltay >= 0) * 2 - 1
-    
+        self.x0, self.y0, self.x1, self.y1 = start_point + end_point
+        if self.y1 > self.y0:
+            self.x0, self.x1 = self.x1, self.x0
+            self.y0, self.y1 = self.y1, self.y0
         
-        self.delta_x, self.delta_y, self.swapped_xy = sort_(end_point[0] - start_point[0], end_point[1] - start_point[1])
-        self.delta_x, self.x_increment,
-        self.delta_y, self.y_increment = configure_deltas(self.delta_x, self.delta_y)
+        self.dx = self.x1 - self.x0
+        self.dy = self.y0 - self.y1
 
-        self.error = -self.delta_y
-        self.x, self.y = start_point
+        self.dx, self.dx_sign = abs(self.dx), 1 if self.dx >= 0 else -1
+        if self.dy > self.dx:
+            self.error = 2 * self.dx - self.dy
+            self.derror0 = 2 * self.dx - 2 * self.dy
+            self.derror1 = 2 * self.dx
+            self.dx0 = self.dx_sign
+            self.dx1 = 0
+            self.r0 = 1
 
-        self.amount_of_iterations = self.delta_x
+        elif self.dy == 0:
+            self.r0 = self.dx + 1
 
-    def advance(self):
-        self.error += 2 * self.delta_x
-        (self.y if self.swapped_xy else self.x) += (self.y_increment if self.swapped_xy else self.x_increment)
+        elif self.dy == 1:
+            self.r0 = (self.dx - 1) // 2 + 1
 
-        if self.error >= 0:
-            self.error -= 2 * self.delta_y
-            (self.y if not self.swapped_xy else self.x) += (self.y_increment if not self.swapped_xy else self.x_increment)
+        else:
+            self.r = self.dx // self.dy
+            self.dx_ = self.dx % self.dy
+            r = self.r % 2
+            self.r0 = (self.r + r) // 2 + (1 - r) * (self.dx_ != 0)
 
-        self.amount_of_iterations -= 1
+            self.derror0 = -2 * self.dy if self.dx_ == 0 else -2 * self.dx_
+            self.derror1 = 0 if self.dx_ == 0 else -2 * self.dx_ + 2 * self.dy
+            self.dx0 = self.r * self.dx_sign
+            self.dx1 = (self.r + 1 - (self.dx_ == 0)) * self.dx_sign
 
-        return self.amount_of_iterations == 0
+            self.error = self.derror0 - self.dx_ + self.dy * (r + 2 * (r == 0) * (self.dx_ != 0))
+
+        self.x = self.x0 - self.dx_sign
+        self.y = self.y0 + 1
+
+    def configure_run(self):
+        x = self.x_prev
+        if self.x != self.x_prev:
+            x += self.dx_sign
+        return min(x, self.x), max(x, self.x), self.y
+
+    def advance(self, current_y=0):
+        #if current_y > self.y0:
+        #    return (), True
+        self.y -= 1
+        self.x_prev = self.x
+        if self.y == self.y0:
+            self.x = self.x0 + (self.r0 - 1) * self.dx_sign
+        elif self.y == self.y1:
+            self.x = self.x1
+        else:
+            if self.error >= 0:
+                self.error += self.derror0
+                self.x += self.dx0
+            else:
+                self.error += self.derror1
+                self.x += self.dx1
+
+        return self.configure_run(), self.y <= self.y1
+
+    def __repr__(self):
+        return f"dx: {self.dx}, dy: {self.dy}, x: {self.x}, y: {self.y}, x_prev: {self.x_prev}, error: {self.error}"
     
 
 class Polygon:
@@ -61,6 +94,14 @@ class Polygon:
         self.vertexes = vertexes
         self.texture = get_texture(texture_index)
 
-        lines = compute_end_points(vertexes)
-        self.hor_lines = [line(hor) for hor in lines[0]]
-        self.ver_lines = [line(ver) for ver in lines[1]]
+        # lines = compute_end_points(vertexes)
+        # self.hor_lines = [line(hor) for hor in lines[0]]
+        # self.ver_lines = [line(ver) for ver in lines[1]]
+
+if __name__ == "__main__":
+    check = Line((0, 0), (6, 4))
+    while True:
+        a = check.advance()
+        print(a[0])
+        if a[1]:
+            break

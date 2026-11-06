@@ -11,8 +11,8 @@ vector_library = ctypes.CDLL(os.path.join(os.path.dirname(os.path.abspath(__file
 screen = 80, 64
 focal_length = 64
 screen_rel = screen[0] / (2 * focal_length), screen[1] / (2 * focal_length)
-sub_div = 8
-sub_div_ = 1 / sub_div
+base_sub_div = 8
+base_sub_div_inv = 1 / base_sub_div
 Z_maximum = 2 << 7
 Z_minimum = 0
 
@@ -297,8 +297,58 @@ def on_screen(points: vector) -> bool:
        and points[2] >= Z_minimum\
        and points[2] <= Z_maximum
 
-def main() -> None:
-    return
+def clip_line(start: vector, end: vector) -> vector:
+    srx = screen_rel[0]
+    sry = screen_rel[1]
+
+    def calculate_planes(dv, v0):
+        dx, dy, dz = dv
+        x0, y0, z0 = v0
+        planes = [
+            [x0 - srx * z0, dx - srx * dz],
+            [x0 + srx * z0, dx + srx * dz],
+            [y0 - sry * z0, dy - sry * dz],
+            [y0 - sry * z0, dy - sry * dz],
+            [z0 - Z_minimum, dz],
+            [z0 - Z_maximum, dz]
+        ]
+        return planes
+    
+    if True or on_screen(start) and on_screen(end):
+        return [[start, 0], [end, 1]]
+
+    # next lines of code are curently very exprensive will be highly optimized i hope soon 11/3/2026
+    # btw ideas from july so soon half a year wil pass
+    planes = calculate_planes(end - start, start)
+    t_values = [0 if l1 == 0 else (0 if (l0 >= 0 * 2 - 1) * (l1 >= 0 * 2 -1) < 0 else\
+                                    1 if l1 * (l1 + l0) < 0 else -l0 / l1) for l0, l1 in planes]
+    t_min = min(t_values)
+    t_max = max(t_values)
+    return (end - start) * t_min + start, (end - start) * t_max + start
+
+def family_line_compute(v0: vector, v1:vector, v2:vector, sub_div=base_sub_div) -> list[vector]:
+    # will be highly optimized and rewritten hope soon
+    if sub_div is None:
+        sub_div = base_sub_div
+    sub_div_inv = 1 / sub_div
+
+    dv1 = v1 - v0
+    dv2 = v2 - v0
+    result = []
+
+    step = dv2 * sub_div_inv
+    start = v0
+    end = start + dv1
+    iterations_left = sub_div + 1
+
+    while iterations_left:
+        result.append(clip_line(start, end))
+
+        start += step
+        end = start + dv1
+        iterations_left -= 1
+
+    return result
 
 if __name__ == "__main__":
-    main()
+    pass
